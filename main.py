@@ -40,7 +40,7 @@ class Job(BaseModel):
 app = FastAPI(
     title="UrBreath - OptimalSnow - API",
     description="",
-    version="0.2",
+    version="0.32",
     contact={
         "name": "Nefeli Kousta",
         "email": "nefelikousta@gmail.com",
