@@ -42,7 +42,7 @@ def run_pipeline(job_id, total_snow_volume, p, solver_method, city_name):
     )
     allowed_indices = build_allowed_assignments_cluster(cluster_dist_matrix, K=100) #(K=100 for cp-sat, K=20 for milp-cbc)
 
-    selected_depots, cluster_assignment, best_obj = solve_capacitated_p_median(
+    result = solve_capacitated_p_median(
         cluster_dist_matrix,
         cluster_demands,
         capacities,
@@ -54,6 +54,9 @@ def run_pipeline(job_id, total_snow_volume, p, solver_method, city_name):
         num_workers=8,
         log_search_progress=False,
     )
+    if result is None:
+        return None  # solver found no feasible solution
+    selected_depots, cluster_assignment, best_obj = result
 
     print("Selected depots:", selected_depots)
     print("Objective:", best_obj)
@@ -63,13 +66,19 @@ def run_pipeline(job_id, total_snow_volume, p, solver_method, city_name):
         cluster_assignment, cluster_to_streets, n_streets
     )
 
-    # selected deposits 
+    # selected deposits, with the snow volume and number of streets assigned to each
+    assigned_snow = np.bincount(street_assignment, weights=snow_weights, minlength=len(deposits))
+    assigned_streets = np.bincount(street_assignment, minlength=len(deposits))
+
     selected_deposits_gdf = deposits.iloc[selected_depots].copy()
     selected_deposits_gdf["deposit_index"] = selected_depots
+    selected_deposits_gdf["assigned_snow_m3"] = assigned_snow[selected_depots]
+    selected_deposits_gdf["n_streets"] = assigned_streets[selected_depots]
     selected_deposits_gdf.to_file(os.path.join(path,"results_deposits.geojson"), driver="GeoJSON")
 
-    # street assignment (attach the assigned deposit index to each road)
+    # street assignment (attach the assigned deposit index and snow volume to each road)
     roads_with_clusters["assigned_deposit_index"] = street_assignment
+    roads_with_clusters["snow_m3"] = snow_weights
     roads_with_clusters.to_file(os.path.join(path,"results_street_assignment.geojson"), driver="GeoJSON")
 
     print("Results saved to results_deposits.geojson and results_street_assignment.geojson")

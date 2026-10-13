@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OptimalSnow</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #17202b;
+      --muted: #5d6877;
+      --faint: #8a94a3;
+      --line: #e3e7ec;
+      --field: #f3f5f8;
+      --accent: #1559c2;
+      --accent-hover: #0f4aa6;
+      --accent-soft: #e7effb;
+      --ok: #1f8a4c;
+      --warn: #b86e00;
+      --warn-soft: #fff4e0;
+      --bad: #c62f2f;
+      --bad-soft: #fdecec;
+      --radius: 10px;
+      --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 var(--font);
+    }
+
+    /* ---------- side panel ---------- */
+    #panel {
+      width: 360px;
+      flex: none;
+      height: 100%;
+      overflow-y: auto;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+    }
+    .brand {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    section { padding: 16px 20px; border-bottom: 1px solid var(--line); }
+    section:last-child { border-bottom: 0; }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+
+    /* ---------- form ---------- */
+    .field { margin-bottom: 14px; }
+    .field > label, .field > .label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 5px;
+    }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 5px; }
+    select, input[type=number] {
+      width: 100%;
+      height: 38px;
+      padding: 0 10px;
+      font: inherit;
+      color: inherit;
+      background: var(--field);
+      border: 1px solid transparent;
+      border-radius: 8px;
+      outline: none;
+    }
+    select:focus, input[type=number]:focus { border-color: var(--accent); background: #fff; }
+    .row { display: grid; grid-template-columns: 1fr 104px; gap: 10px; }
+    .unit { position: relative; }
+    .unit input { padding-right: 34px; }
+    .unit span {
+      position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      color: var(--faint); pointer-events: none;
+    }
+
+    .segmented {
+      display: grid; grid-template-columns: 1fr 1fr;
+      background: var(--field); border-radius: 8px; padding: 3px;
+    }
+    .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+    .segmented label {
+      text-align: center; padding: 6px 0; border-radius: 6px; cursor: pointer;
+      color: var(--muted); font-weight: 500;
+    }
+    .segmented input:checked + label { background: #fff; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+    .segmented input:focus-visible + label { outline: 2px solid var(--accent); }
+
+    .meter { margin: -2px 0 16px; }
+    .meter-track { height: 6px; background: var(--field); border-radius: 3px; overflow: hidden; }
+    .meter-fill { height: 100%; width: 0; background: var(--ok); transition: width .2s, background .2s; }
+    .meter[data-level=tight] .meter-fill { background: var(--warn); }
+    .meter[data-level=over] .meter-fill { background: var(--bad); }
+    .meter .hint { margin-top: 6px; }
+    .meter[data-level=over] .hint { color: var(--bad); }
+    .meter[data-level=tight] .hint { color: var(--warn); }
+
+    button.primary {
+      width: 100%; height: 40px;
+      font: inherit; font-weight: 600; color: #fff;
+      background: var(--accent); border: 0; border-radius: 8px; cursor: pointer;
+    }
+    button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+    button.primary:disabled { background: #b8c3d3; cursor: not-allowed; }
+
+    /* ---------- job status ---------- */
+    .status {
+      display: flex; gap: 10px; align-items: flex-start;
+      padding: 12px; border-radius: var(--radius);
+      background: var(--accent-soft);
+    }
+    .status[data-state=failed] { background: var(--bad-soft); }
+    .status[data-state=completed] { background: #e8f5ed; }
+    .status .title { font-weight: 600; }
+    .status .detail { color: var(--muted); font-size: 12px; word-break: break-word; }
+    .status[data-state=failed] .detail { color: var(--bad); }
+    .spinner {
+      width: 16px; height: 16px; margin-top: 2px; flex: none;
+      border: 2px solid #b9cdee; border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex: none; }
+    .status[data-state=completed] .dot { background: var(--ok); }
+    .status[data-state=failed] .dot { background: var(--bad); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---------- results ---------- */
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+    .stat { background: var(--field); border-radius: 8px; padding: 8px 10px; }
+    .stat b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+    .stat span { color: var(--muted); font-size: 11px; }
+
+    .deposits { list-style: none; margin: 0 0 14px; padding: 0; }
+    .deposits li {
+      display: grid; grid-template-columns: 12px 1fr; gap: 4px 10px;
+      padding: 9px 8px; margin: 0 -8px; border-radius: 8px; cursor: pointer;
+    }
+    .deposits li:hover { background: var(--field); }
+    .deposits li[aria-selected=true] { background: var(--accent-soft); }
+    .deposits .swatch { width: 12px; height: 12px; border-radius: 50%; margin-top: 4px; }
+    .deposits .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .deposits .meta { grid-column: 2; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .deposits .util { grid-column: 2; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+    .deposits .util div { height: 100%; }
+
+    a.download {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      height: 38px; border: 1px solid var(--line); border-radius: 8px;
+      color: var(--text); text-decoration: none; font-weight: 500;
+    }
+    a.download:hover { background: var(--field); }
+
+    .toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; }
+    .toggle:last-child { margin-bottom: 0; }
+    .toggle input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+    .legend-dot { width: 9px; height: 9px; border-radius: 50%; background: #7d8796; display: inline-block; }
+    .legend-line { width: 16px; height: 3px; border-radius: 2px; background: linear-gradient(90deg, #1559c2, #e11d48, #16a34a); display: inline-block; }
+
+    .empty { color: var(--muted); font-size: 13px; margin: 0; }
+    [hidden] { display: none !important; }
+
+    /* ---------- map ---------- */
+    #map { flex: 1; height: 100%; background: #e9edf1; }
+    /* muted basemap so the coloured street assignment stands out */
+    .basemap { filter: grayscale(1) contrast(0.85) brightness(1.06); }
+    .leaflet-popup-content { font: 13px/1.45 var(--font); margin: 10px 14px; }
+    .leaflet-popup-content b { font-size: 14px; }
+    .popup-grid { display: grid; grid-template-columns: auto auto; gap: 1px 12px; margin-top: 6px; color: var(--muted); }
+    .popup-grid span:nth-child(even) { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+
+    @media (max-width: 760px) {
+      body { flex-direction: column-reverse; height: auto; min-height: 100%; }
+      #panel { width: 100%; height: auto; border-right: 0; border-top: 1px solid var(--line); overflow: visible; }
+      #map { height: 55vh; flex: none; }
+      section, .brand { padding-left: 16px; padding-right: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <aside id="panel">
+    <div class="brand">
+      <h1>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M12 2v20M4.9 6.5l14.2 11M4.9 17.5l14.2-11M9 3.5l3 2.5 3-2.5M9 20.5l3-2.5 3 2.5"/>
+        </svg>
+        OptimalSnow
+      </h1>
+      <p>Choose where to open snow deposit sites and which streets each one serves.</p>
+    </div>
+
+    <section>
+      <h2>Inputs</h2>
+      <form id="job-form" novalidate>
+        <div class="field">
+          <label for="city">City</label>
+          <select id="city" name="city_name"></select>
+        </div>
+
+        <div class="field row">
+          <div>
+            <label for="tsv">Total snow volume</label>
+            <div class="unit"><input id="tsv" name="tsv" type="number" min="1" step="any" value="10000" required><span>m³</span></div>
+          </div>
+          <div>
+            <label for="p">Sites</label>
+            <input id="p" name="p" type="number" min="1" step="1" value="5" required>
+          </div>
+        </div>
+
+        <div class="meter" id="meter" data-level="ok">
+          <div class="meter-track"><div class="meter-fill"></div></div>
+          <div class="hint" id="meter-text">&nbsp;</div>
+        </div>
+
+        <div class="field">
+          <span class="label">Solver</span>
+          <div class="segmented" role="radiogroup" aria-label="Solver">
+            <input type="radio" name="solver" id="solver-cpsat" value="cpsat" checked><label for="solver-cpsat">CP-SAT</label>
+            <input type="radio" name="solver" id="solver-cbc" value="cbc"><label for="solver-cbc">CBC</label>
+          </div>
+          <div class="hint">CP-SAT is recommended; CBC is slower on large cities.</div>
+        </div>
+
+        <button class="primary" type="submit" id="run">Run optimisation</button>
+      </form>
+    </section>
+
+    <section id="job-section" hidden>
+      <h2>Job</h2>
+      <div class="status" id="status" data-state="pending">
+        <div class="spinner" id="status-icon"></div>
+        <div>
+          <div class="title" id="status-title"></div>
+          <div class="detail" id="status-detail"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="results-section" hidden>
+      <h2>Results</h2>
+      <div class="stats">
+        <div class="stat"><b id="stat-sites"></b><span>sites opened</span></div>
+        <div class="stat"><b id="stat-snow"></b><span>m³ of snow</span></div>
+        <div class="stat"><b id="stat-util"></b><span>peak fill</span></div>
+      </div>
+      <ul class="deposits" id="deposit-list" role="listbox" aria-label="Selected deposit sites"></ul>
+      <a class="download" id="download" href="#" download>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+        Download GeoJSON (zip)
+      </a>
+    </section>
+
+    <section>
+      <h2>Map layers</h2>
+      <label class="toggle"><input type="checkbox" id="show-candidates" checked><span class="legend-dot"></span> Candidate sites</label>
+      <label class="toggle"><input type="checkbox" id="show-streets" checked><span class="legend-line"></span> Streets, coloured by assigned site</label>
+    </section>
+  </aside>
+
+  <main id="map" aria-label="Map"></main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script>
+  // All API paths are relative so the page also works behind a proxy sub-path.
+  const POLL_MS = 2000;
+  const PALETTE = ["#1559c2", "#e11d48", "#16a34a", "#d97706", "#7c3aed",
+                   "#0891b2", "#db2777", "#65a30d", "#ea580c", "#4338ca"];
+  const fmt = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
+  const $ = (id) => document.getElementById(id);
+
+  const state = {
+    cities: {},          // name -> summary from /cities
+    candidates: {},      // name -> GeoJSON of candidate deposits (cached)
+    jobId: null,
+    pollTimer: null,
+    clockTimer: null,
+    colors: new Map(),   // deposit_index -> colour
+    focused: null,       // deposit_index highlighted from the list
+  };
+
+  // ---------- map ----------
+  const map = L.map("map", { zoomControl: true }).setView([61.5, 25], 6);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    className: "basemap",
+    maxZoom: 19,
+  }).addTo(map);
+
+  // Separate panes keep the stacking order: streets < candidates < selected sites
+  const renderers = {};
+  [["streets", 410], ["candidates", 420], ["selected", 430]].forEach(([name, z]) => {
+    map.createPane(name).style.zIndex = z;
+    renderers[name] = L.canvas({ pane: name, tolerance: 4 });
+  });
+  const layers = {
+    streets: L.layerGroup().addTo(map),
+    candidates: L.layerGroup().addTo(map),
+    selected: L.layerGroup().addTo(map),
+  };
+  let streetsLayer = null;
+  const selectedMarkers = new Map();  // deposit_index -> marker
+
+  // ---------- helpers ----------
+  async function api(path, options) {
+    const res = await fetch(path, options);
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const body = await res.json();
+        message = Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join("; ") : body.detail;
+      } catch (_) { /* not JSON */ }
+      const err = new Error(message || `Request failed (${res.status})`);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  }
+
+  function esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function colourFor(i) {
+    return i < PALETTE.length ? PALETTE[i] : `hsl(${(i * 137.5) % 360}, 62%, 45%)`;
+  }
+
+  function siteName(props) {
+    return props.label && props.label.trim() ? props.label : `Site #${props.deposit_index}`;
+  }
+
+  function popupHtml(title, rows) {
+    return `<b>${esc(title)}</b><div class="popup-grid">${
+      rows.map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join("")}</div>`;
+  }
+
+  function formValues() {
+    return {
+      city_name: $("city").value,
+      tsv: parseFloat($("tsv").value),
+      p: parseInt($("p").value, 10),
+      solver: document.querySelector("input[name=solver]:checked").value,
+    };
+  }
+
+  // ---------- capacity check ----------
+  function updateMeter() {
+    const city = state.cities[$("city").value];
+    const { tsv, p } = formValues();
+    const meter = $("meter");
+    let level = "ok", text = " ", fill = 0, valid = !!(city && city.available);
+
+    if (valid && !(p >= 1 && p <= city.n_deposits)) {
+      level = "over"; valid = false;
+      text = `Choose between 1 and ${fmt.format(city.n_deposits)} sites.`;
+    } else if (valid && !(tsv > 0)) {
+      valid = false;
+      text = "Enter the total snow volume.";
+    } else if (valid) {
+      const limit = city.max_capacity_by_p[p - 1];
+      fill = Math.min(tsv / limit, 1);
+      if (tsv > limit) {
+        level = "over"; valid = false;
+        text = `Too much snow: the ${p} largest sites hold at most ${fmt.format(limit)} m³. Lower the volume or add sites.`;
+      } else if (tsv > 0.8 * limit) {
+        level = "tight";
+        text = `Close to the limit of ${fmt.format(limit)} m³ for ${p} sites; the job may still find no solution.`;
+      } else {
+        // Only an upper bound: each area can only use nearby sites, so few sites may still fail
+        text = `${p} site${p > 1 ? "s" : ""} can hold at most ${fmt.format(limit)} m³. Each area can only use nearby sites, so very few sites may still find no solution.`;
+      }
+    }
+    meter.dataset.level = level;
+    meter.querySelector(".meter-fill").style.width = `${fill * 100}%`;
+    $("meter-text").textContent = text;
+    $("run").disabled = !valid || isPolling();
+  }
+
+  // ---------- cities & candidate deposits ----------
+  async function loadCities() {
+    const cities = await api("cities");
+    const select = $("city");
+    select.innerHTML = "";
+    for (const c of cities) {
+      state.cities[c.name] = c;
+      const opt = new Option(c.available ? c.display_name : `${c.display_name} (no data)`, c.name);
+      opt.disabled = !c.available;
+      select.add(opt);
+    }
+    const first = cities.find((c) => c.available);
+    if (first) select.value = first.name;
+  }
+
+  async function showCity(name, { fit = true } = {}) {
+    const city = state.cities[name];
+    if (!city || !city.available) return;
+    $("p").max = city.n_deposits;
+    if (fit) map.fitBounds(city.bounds, { padding: [20, 20] });
+    updateMeter();
+
+    if (!state.candidates[name]) state.candidates[name] = await api(`cities/${name}/deposits`);
+    if ($("city").value !== name) return;  // user switched city while loading
+    layers.candidates.clearLayers();
+    L.geoJSON(state.candidates[name], {
+      pointToLayer: (f, latlng) => L.circleMarker(latlng, {
+        renderer: renderers.candidates, radius: 3.5, weight: 1,
+        color: "#ffffff", fillColor: "#7d8796", fillOpacity: 0.75,
+      }),
+      onEachFeature: (f, layer) => layer.bindPopup(() => popupHtml(siteName(f.properties), [
+        ["Capacity", `${fmt.format(f.properties.snow_capacity_m3)} m³`],
+        ["Status", "Candidate"],
+      ])),
+    }).addTo(layers.candidates);
+  }
+
+  // ---------- jobs ----------
+  function isPolling() { return state.pollTimer !== null; }
+
+  function setStatus(stateName, title, detail) {
+    $("job-section").hidden = false;
+    const box = $("status");
+    box.dataset.state = stateName;
+    $("status-icon").className = stateName === "pending" || stateName === "running" ? "spinner" : "dot";
+    $("status-title").textContent = title;
+    $("status-detail").textContent = detail || "";
+  }
+
+  function stopPolling() {
+    clearTimeout(state.pollTimer); state.pollTimer = null;
+    clearInterval(state.clockTimer); state.clockTimer = null;
+    updateMeter();
+  }
+
+  function clearResults() {
+    layers.streets.clearLayers();
+    layers.selected.clearLayers();
+    selectedMarkers.clear();
+    streetsLayer = null;
+    state.focused = null;
+    $("results-section").hidden = true;
+  }
+
+  async function submitJob(e) {
+    e.preventDefault();
+    const body = formValues();
+    clearResults();
+    $("run").disabled = true;
+    try {
+      const job = await api("jobs/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      trackJob(job.id);
+    } catch (err) {
+      setStatus("failed", "Could not create job", err.message);
+      updateMeter();
+    }
+  }
+
+  function trackJob(id) {
+    stopPolling();
+    state.jobId = id;
+    history.replaceState(null, "", `#job=${id}`);
+    const started = new Date();
+    const tick = () => {
+      const s = Math.max(0, Math.round((Date.now() - started) / 1000));
+      setStatus("running", "Optimising…", `Elapsed ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} · job ${id.slice(0, 8)}`);
+    };
+    tick();
+    state.clockTimer = setInterval(tick, 1000);
+    poll();
+  }
+
+  async function poll() {
+    const id = state.jobId;
+    state.pollTimer = -1;  // mark as polling while the request is in flight
+    updateMeter();
+    let job;
+    try {
+      job = await api(`jobs/${id}/status`);
+    } catch (err) {
+      if (id !== state.jobId) return;
+      if (err.status === 404) {
+        stopPolling();
+        history.replaceState(null, "", location.pathname + location.search);
+        setStatus("failed", "Job not found", "The server may have restarted. Please run the job again.");
+        return;
+      }
+      state.pollTimer = setTimeout(poll, POLL_MS * 2);  // transient error: retry
+      return;
+    }
+    if (id !== state.jobId) return;
+
+    if (job.status === "completed") {
+      stopPolling();
+      // Server timestamps carry no timezone, so only their difference is meaningful
+      const took = Math.round((new Date(job.completed_at) - new Date(job.created_at)) / 1000);
+      setStatus("completed", "Done", `Solved in ${took}s · job ${id.slice(0, 8)}`);
+      await loadResults(id, job);
+    } else if (job.status === "failed") {
+      stopPolling();
+      setStatus("failed", "Optimisation failed", job.error);
+    } else {
+      state.pollTimer = setTimeout(poll, POLL_MS);
+    }
+  }
+
+  // ---------- results ----------
+  async function loadResults(id, job) {
+    const [deposits, streets] = await Promise.all([api(`jobs/${id}/deposits`), api(`jobs/${id}/streets`)]);
+    if (id !== state.jobId) return;
+    clearResults();
+
+    // Biggest sites get the first (most distinct) colours
+    const sites = deposits.features
+      .map((f) => f.properties)
+      .sort((a, b) => b.assigned_snow_m3 - a.assigned_snow_m3);
+    state.colors = new Map(sites.map((s, i) => [s.deposit_index, colourFor(i)]));
+    const names = new Map(sites.map((s) => [s.deposit_index, siteName(s)]));
+
+    streetsLayer = L.geoJSON(streets, {
+      renderer: renderers.streets,
+      style: streetStyle,
+      onEachFeature: (f, layer) => layer.bindPopup(() => popupHtml(f.properties.name || "Street segment", [
+        ["Snow", `${fmt.format(f.properties.snow_m3)} m³`],
+        ["Goes to", names.get(f.properties.assigned_deposit_index) || "—"],
+      ])),
+    });
+    if ($("show-streets").checked) streetsLayer.addTo(layers.streets);
+
+    const maxCap = Math.max(...sites.map((s) => s.snow_capacity_m3));
+    for (const f of deposits.features) {
+      const s = f.properties;
+      const [lng, lat] = f.geometry.coordinates;
+      const marker = L.circleMarker([lat, lng], {
+        renderer: renderers.selected,
+        radius: 7 + 9 * Math.sqrt(s.snow_capacity_m3 / maxCap),
+        color: "#ffffff", weight: 2.5,
+        fillColor: state.colors.get(s.deposit_index), fillOpacity: 1,
+      }).bindPopup(() => popupHtml(siteName(s), [
+        ["Capacity", `${fmt.format(s.snow_capacity_m3)} m³`],
+        ["Assigned snow", `${fmt.format(s.assigned_snow_m3)} m³`],
+        ["Fill", `${Math.round(100 * s.assigned_snow_m3 / s.snow_capacity_m3)}%`],
+        ["Streets served", fmt.format(s.n_streets)],
+      ]));
+      marker.on("click", () => focusSite(s.deposit_index, { fly: false }));
+      marker.addTo(layers.selected);
+      selectedMarkers.set(s.deposit_index, marker);
+    }
+
+    // Summary + list
+    const totalSnow = sites.reduce((t, s) => t + s.assigned_snow_m3, 0);
+    const peak = Math.max(...sites.map((s) => s.assigned_snow_m3 / s.snow_capacity_m3));
+    $("stat-sites").textContent = fmt.format(sites.length);
+    $("stat-snow").textContent = fmt.format(totalSnow);
+    $("stat-util").textContent = `${Math.round(peak * 100)}%`;
+
+    const list = $("deposit-list");
+    list.innerHTML = "";
+    for (const s of sites) {
+      const pct = Math.min(100, 100 * s.assigned_snow_m3 / s.snow_capacity_m3);
+      const li = document.createElement("li");
+      li.setAttribute("role", "option");
+      li.dataset.index = s.deposit_index;
+      li.innerHTML = `
+        <span class="swatch" style="background:${state.colors.get(s.deposit_index)}"></span>
+        <span class="name"></span>
+        <span class="meta">${fmt.format(s.assigned_snow_m3)} / ${fmt.format(s.snow_capacity_m3)} m³ · ${fmt.format(s.n_streets)} streets</span>
+        <span class="util"><div style="width:${pct}%;background:${state.colors.get(s.deposit_index)}"></div></span>`;
+      li.querySelector(".name").textContent = siteName(s);
+      li.title = siteName(s);
+      li.addEventListener("click", () => focusSite(s.deposit_index));
+      list.appendChild(li);
+    }
+    $("download").href = `jobs/${id}/download-results`;
+    $("results-section").hidden = false;
+
+    // Restore the form to the job's inputs (useful when reopening a #job= link)
+    if (job) {
+      $("city").value = job.city_name;
+      $("tsv").value = job.tsv;
+      $("p").value = job.p;
+      const radio = document.querySelector(`input[name=solver][value="${job.solver}"]`);
+      if (radio) radio.checked = true;
+      updateMeter();
+    }
+    const bounds = streetsLayer.getBounds();
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+  }
+
+  function streetStyle(f) {
+    const idx = f.properties.assigned_deposit_index;
+    const dimmed = state.focused !== null && idx !== state.focused;
+    return {
+      color: state.colors.get(idx) || "#9aa3af",
+      weight: dimmed ? 1.5 : 2.5,
+      opacity: dimmed ? 0.12 : 0.85,
+    };
+  }
+
+  function focusSite(index, { fly = true } = {}) {
+    state.focused = state.focused === index ? null : index;
+    if (streetsLayer) streetsLayer.setStyle(streetStyle);
+    document.querySelectorAll("#deposit-list li").forEach((li) => {
+      li.setAttribute("aria-selected", String(Number(li.dataset.index) === state.focused));
+    });
+    const marker = selectedMarkers.get(index);
+    if (state.focused !== null && marker && fly) {
+      map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 14), { duration: 0.6 });
+      marker.openPopup();
+    }
+  }
+
+  // ---------- wiring ----------
+  $("job-form").addEventListener("submit", submitJob);
+  $("city").addEventListener("change", () => {
+    clearResults();
+    $("job-section").hidden = true;
+    showCity($("city").value);
+  });
+  $("tsv").addEventListener("input", updateMeter);
+  $("p").addEventListener("input", updateMeter);
+  $("show-candidates").addEventListener("change", (e) => {
+    e.target.checked ? map.addLayer(layers.candidates) : map.removeLayer(layers.candidates);
+  });
+  $("show-streets").addEventListener("change", (e) => {
+    if (!streetsLayer) return;
+    e.target.checked ? streetsLayer.addTo(layers.streets) : layers.streets.clearLayers();
+  });
+
+  (async function init() {
+    try {
+      await loadCities();
+    } catch (err) {
+      setStatus("failed", "Could not load cities", err.message);
+      return;
+    }
+    const match = location.hash.match(/job=([0-9a-f-]{36})/i);
+    if (match) {
+      // Reopen a job from a shared link: set the city first, then follow the job
+      try {
+        const job = await api(`jobs/${match[1]}/status`);
+        $("city").value = job.city_name;
+        await showCity(job.city_name, { fit: true });
+        trackJob(job.job_id);
+        return;
+      } catch (_) {
+        history.replaceState(null, "", location.pathname + location.search);
+      }
+    }
+    await showCity($("city").value);
+  })();
+  </script>
+</body>
+</html>

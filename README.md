@@ -34,7 +34,8 @@ User inputs: total snow volume V, number of depots k, solver
 
 ```
 OptimalSnow/
-├── main.py                  # FastAPI service (creates jobs, serves results)
+├── main.py                  # FastAPI service (creates jobs, serves results and the web map)
+├── static/index.html        # Web map frontend (Leaflet), served at /
 ├── src/
 │   ├── city_config.py       # Per-city settings: input paths, OSM place, CRS, cluster count
 │   ├── prepare_data.py      # One-time preprocessing per city: distance matrix, road fractions
@@ -98,6 +99,19 @@ curl -X POST localhost:8000/jobs/ -H "Content-Type: application/json" \
 Poll `GET /jobs/{job_id}/status` and download the results with `GET /jobs/{job_id}/download-results`.
 
 When running with Docker Compose, the host folder `.data_prepared/` is mounted as `data_prepared/` in the container, so put the preprocessed data in `.data_prepared/<city>/`.
+
+### Web map
+
+Open the API root (e.g. `http://localhost:8000/`) in a browser. The side panel takes the city, snow volume, number of sites and solver, warns when the volume exceeds what the chosen number of sites can hold, and follows the job. The map then shows the selected sites (sized by capacity) and colours every street by the site it is assigned to; click a site in the list to highlight its streets. The URL (`#job=<id>`) can be reopened while the server keeps the job in memory.
+
+The page uses these endpoints, which return GeoJSON in EPSG:4326:
+
+| Endpoint | Returns |
+|----------|---------|
+| `GET /cities` | Available cities, map bounds, and the max capacity for each number of sites |
+| `GET /cities/{city}/deposits` | Candidate deposit sites (points) with capacities |
+| `GET /jobs/{id}/deposits` | Selected sites with capacity, assigned snow and number of streets |
+| `GET /jobs/{id}/streets` | Streets with assigned site and snow volume |
 
 ### Outputs
 
