@@ -7,5 +7,5 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     volumes:
-      - .data_prepared:/app/data_prepared
+      - ./data_prepared:/app/data_prepared
     restart: always
