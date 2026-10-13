@@ -1,2 +1,4 @@
-data/*.geojson
+data/**/*.geojson
 .data_prepared/
+data_prepared/
+cache/

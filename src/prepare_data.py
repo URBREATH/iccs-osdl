@@ -1,20 +1,29 @@
+import argparse
+import os
+
 import geopandas as gpd
 import pandas as pd
 import numpy as np
 import osmnx as ox
 import networkx as nx
 
-ROADS_FPATH = "data/tallinn_roads.geojson"
-DEP_MUN_FPATH = "data/snow_capacity_municipality.geojson"
-DEP_GOV_FPATH = "data/snow_capacity_government.geojson"
+from city_config import get_city_config
 
-OUTPUT_DIR = "data_prepared/"
-print("Loading data...")
+parser = argparse.ArgumentParser(description="Preprocess road/deposit data for a city.")
+parser.add_argument("--city", default="tallinn", help="City slug, e.g. 'tallinn' or 'kajaani'")
+args = parser.parse_args()
 
-roads = gpd.read_file(ROADS_FPATH)
-deposits1 = gpd.read_file(DEP_MUN_FPATH)
-deposits2 = gpd.read_file(DEP_GOV_FPATH)
-deposits = pd.concat([deposits1, deposits2], ignore_index=True)
+city = get_city_config(args.city)
+
+OUTPUT_DIR = city.prepared_dir
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+print(f"Loading data for {city.display_name}...")
+
+roads = gpd.read_file(city.roads_path)
+deposits = pd.concat(
+    [gpd.read_file(p) for p in city.deposit_paths], ignore_index=True
+)
 
 # Compute per-street area fractions (V-independent); multiply by V at runtime
 total_area = roads["area_sqm"].sum()
@@ -22,18 +31,20 @@ road_area_fractions = (roads["area_sqm"] / total_area).to_numpy()
 
 capacities = deposits["snow_capacity_m3"].to_numpy()
 
-print("Projecting for centroid extraction...") # EPSG:3301 for Estonia
-roads3301 = roads.to_crs(3301) 
-deposits3301 = deposits.to_crs(3301)
+print(f"Projecting for centroid extraction... (EPSG:{city.metric_crs})")
+# Centroids are computed in a metric CRS, then converted back to lon/lat
+# because the OSM graph from graph_from_place is unprojected (EPSG:4326)
+road_centroids = roads.to_crs(city.metric_crs).geometry.centroid.to_crs(4326)
+depot_centroids = deposits.to_crs(city.metric_crs).geometry.centroid.to_crs(4326)
 
-road_lons = roads3301.geometry.centroid.x.values
-road_lats = roads3301.geometry.centroid.y.values
+road_lons = road_centroids.x.values
+road_lats = road_centroids.y.values
 
-depot_lons = deposits3301.geometry.centroid.x.values
-depot_lats = deposits3301.geometry.centroid.y.values
+depot_lons = depot_centroids.x.values
+depot_lats = depot_centroids.y.values
 
 print("Loading OSM graph...")
-G = ox.graph_from_place("Tallinn, Estonia", network_type="drive")
+G = ox.graph_from_place(city.osm_place, network_type="drive")
 ox.distance.add_edge_lengths(G)
 
 print("Finding nearest nodes...")
@@ -52,13 +63,13 @@ for j, depot_node in enumerate(depot_nodes):
         dist_matrix[i, j] = dists.get(road_node, 1e9)
 
 print("Saving outputs...")
-roads.to_parquet(OUTPUT_DIR + "roads.parquet")
-deposits.to_parquet(OUTPUT_DIR + "deposits.parquet")
+roads.to_parquet(os.path.join(OUTPUT_DIR, "roads.parquet"))
+deposits.to_parquet(os.path.join(OUTPUT_DIR, "deposits.parquet"))
 
-np.save(OUTPUT_DIR + "road_area_fractions.npy", road_area_fractions)
-np.save(OUTPUT_DIR + "capacities.npy", capacities)
-np.save(OUTPUT_DIR + "dist_matrix.npy", dist_matrix)
-np.save(OUTPUT_DIR + "road_nodes.npy", road_nodes)
-np.save(OUTPUT_DIR + "depot_nodes.npy", depot_nodes)
+np.save(os.path.join(OUTPUT_DIR, "road_area_fractions.npy"), road_area_fractions)
+np.save(os.path.join(OUTPUT_DIR, "capacities.npy"), capacities)
+np.save(os.path.join(OUTPUT_DIR, "dist_matrix.npy"), dist_matrix)
+np.save(os.path.join(OUTPUT_DIR, "road_nodes.npy"), road_nodes)
+np.save(os.path.join(OUTPUT_DIR, "depot_nodes.npy"), depot_nodes)
 
-print("Done!")
+print(f"Done! Outputs written to {OUTPUT_DIR}")

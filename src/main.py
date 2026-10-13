@@ -5,31 +5,38 @@ from src.clustering import (
     map_clusters_to_streets,
 )
 from src.solvers import solve_capacitated_p_median
+from src.city_config import get_city_config
 import numpy as np
 import geopandas as gpd
 import os
 
 # User inputs — these will be set by the API layer per job
+city_name = "tallinn"
 total_snow_volume = 1_000_000
 p = 5
 solver_method = "cpsat"
 
-def run_pipeline(job_id, total_snow_volume, p, solver_method):
+def run_pipeline(job_id, total_snow_volume, p, solver_method, city_name):
 
     path = os.path.join("outputs", str(job_id))
     # print(path)
     os.makedirs(path, exist_ok=True)
 
     # Load preprocessed data
-    roads = gpd.read_parquet("data_prepared/roads.parquet")
-    deposits = gpd.read_parquet("data_prepared/deposits.parquet")
-    dist_matrix = np.load("data_prepared/dist_matrix.npy")
-    road_area_fractions = np.load("data_prepared/road_area_fractions.npy")
-    capacities = np.load("data_prepared/capacities.npy")
+    city = get_city_config(city_name)
+    n_clusters = city.n_clusters
+
+    roads = gpd.read_parquet(os.path.join(city.prepared_dir, "roads.parquet"))
+    deposits = gpd.read_parquet(os.path.join(city.prepared_dir, "deposits.parquet"))
+    dist_matrix = np.load(os.path.join(city.prepared_dir, "dist_matrix.npy"))
+    road_area_fractions = np.load(os.path.join(city.prepared_dir, "road_area_fractions.npy"))
+    capacities = np.load(os.path.join(city.prepared_dir, "capacities.npy"))
 
     snow_weights = road_area_fractions * total_snow_volume
 
-    roads_with_clusters, cluster_ids = cluster_streets(roads, n_clusters=300)
+    roads_with_clusters, cluster_ids = cluster_streets(
+        roads, n_clusters=n_clusters, metric_crs=city.metric_crs
+    )
     cluster_dist_matrix, cluster_demands, cluster_to_streets = build_cluster_level_data(
         dist_matrix, snow_weights, cluster_ids
     )

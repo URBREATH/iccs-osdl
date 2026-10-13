@@ -16,17 +16,23 @@ class SolverType(str, Enum):
     cbc = "cbc"
 
 
+class CityName(str, Enum):
+    tallinn = "tallinn"
+    kajaani = "kajaani"
+
+
 class Job(BaseModel):
-    
+
     tsv: float
     p: int
     solver: SolverType
+    city_name: CityName
     
 
 app = FastAPI(
     title="UrBreath - OptimalSnow - API",
     description="",
-    version="0.1",
+    version="0.2",
     contact={
         "name": "Nefeli Kousta",
         "email": "nefelikousta@gmail.com",
@@ -48,7 +54,8 @@ def run_solver_task(job_id: str):
                 job_id,
                 jobs_db[job_id]["tsv"],
                 jobs_db[job_id]["p"],
-                jobs_db[job_id]["solver"]
+                jobs_db[job_id]["solver"],
+                jobs_db[job_id]["city_name"]
             )
 
             if res == None:
