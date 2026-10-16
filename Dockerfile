@@ -7,7 +7,7 @@ COPY requirements.txt .
 ENV PYTHONUNBUFFERED=1
 
 RUN pip install --no-cache-dir -r requirements.txt
-EXPOSE 8000
+EXPOSE 8600
 
-# CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8600", "--reload"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8600", "--proxy-headers"]
